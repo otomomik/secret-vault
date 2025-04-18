@@ -12,7 +12,8 @@ interface SecretValueConfig {
 
 export const pullCommand = new Command("pull")
   .description("Pull latest version of encrypted data")
-  .action(async () => {
+  .option("-v, --version <version>", "Specific version to pull")
+  .action(async (options) => {
     try {
       const config = loadConfig();
       if (!config.userId) {
@@ -35,7 +36,7 @@ export const pullCommand = new Command("pull")
         process.exit(1);
       }
 
-      // Get latest version info
+      // Get secret info
       const response = await client.api.secrets[":uid"].$get({
         header: {
           "x-user-id": config.userId,
@@ -43,6 +44,7 @@ export const pullCommand = new Command("pull")
         param: {
           uid: vaultConfig.uid,
         },
+        query: options.version ? { version: options.version } : {},
       });
 
       if (!response.ok) {
@@ -51,13 +53,18 @@ export const pullCommand = new Command("pull")
 
       const secret = await response.json();
 
-      // Check if we already have the latest version
-      if (vaultConfig.latestVersion === secret.latestVersion) {
+      // If version is specified, use that version
+      const targetVersion = options.version
+        ? parseInt(options.version, 10)
+        : secret.latestVersion;
+
+      // Check if we already have the requested version
+      if (vaultConfig.latestVersion === targetVersion && !options.version) {
         console.log("Already have the latest version");
         process.exit(0);
       }
 
-      // Get latest encrypted data
+      // Get encrypted data
       const encryptedDataResponse = await client.api.secrets[":uid"][
         "encrypted-data"
       ].$get({
@@ -67,9 +74,7 @@ export const pullCommand = new Command("pull")
         param: {
           uid: vaultConfig.uid,
         },
-        query: {
-          version: secret.latestVersion.toString(),
-        },
+        query: { version: options.version },
       });
 
       if (!encryptedDataResponse.ok) {
@@ -79,18 +84,20 @@ export const pullCommand = new Command("pull")
       const { encryptedData } = await encryptedDataResponse.json();
 
       // Save to cache
-      saveToCache(vaultConfig.uid, secret.latestVersion, encryptedData);
+      saveToCache(vaultConfig.uid, targetVersion, encryptedData);
 
-      // Update config with new version
-      const newConfig: SecretValueConfig = {
-        ...vaultConfig,
-        latestVersion: secret.latestVersion,
-      };
+      // Update config with new version (only if pulling latest)
+      if (!options.version) {
+        const newConfig: SecretValueConfig = {
+          ...vaultConfig,
+          latestVersion: secret.latestVersion,
+        };
+        writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
+      }
 
-      writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
-      console.log("Successfully pulled latest version!");
+      console.log(`Successfully pulled version ${targetVersion}!`);
     } catch (error) {
-      console.error("Error pulling latest version:", error);
+      console.error("Error pulling version:", error);
       process.exit(1);
     }
   });

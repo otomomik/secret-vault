@@ -147,6 +147,23 @@ const routes = app
         params: z.object({
           uid: z.string().uuid("無効なUIDです"),
         }),
+        query: z.object({
+          version: z
+            .string()
+            .optional()
+            .transform((val, ctx) => {
+              if (!val) return undefined;
+              const parsed = parseInt(val, 10);
+              if (isNaN(parsed)) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  message: "無効なバージョンです",
+                });
+                return z.NEVER;
+              }
+              return parsed;
+            }),
+        }),
       },
       responses: {
         200: {
@@ -207,6 +224,7 @@ const routes = app
         }
 
         const { uid } = c.req.valid("param");
+        const { version } = c.req.valid("query");
 
         // ユーザーがアクセス可能なシークレットを取得
         const [accessibleSecret] = await dbClient
@@ -243,10 +261,41 @@ const routes = app
           .orderBy(desc(secretVersionsTable.version))
           .limit(1);
 
+        // バージョン情報を取得
+        let secretVersion;
+        if (version !== undefined) {
+          secretVersion = await dbClient
+            .select()
+            .from(secretVersionsTable)
+            .where(
+              and(
+                eq(secretVersionsTable.secretId, secret.id),
+                eq(secretVersionsTable.version, version),
+              ),
+            )
+            .limit(1);
+        } else {
+          secretVersion = await dbClient
+            .select()
+            .from(secretVersionsTable)
+            .where(eq(secretVersionsTable.secretId, secret.id))
+            .orderBy(desc(secretVersionsTable.version))
+            .limit(1);
+        }
+
+        if (!secretVersion || secretVersion.length === 0) {
+          return c.json(
+            { error: "シークレットのバージョンが見つかりません" },
+            404,
+          );
+        }
+
         const { id, ...secretWithoutId } = secret;
         const response = {
           ...secretWithoutId,
           latestVersion: latestVersion?.version || 0,
+          currentVersion: secretVersion[0].version,
+          metadata: secretVersion[0].metadata,
         };
 
         return c.json(response, 200);

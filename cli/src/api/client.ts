@@ -8,15 +8,3 @@ export const client = hc<App>(API_URL, {
     "Content-Type": "application/json",
   },
 });
-
-// API型定義
-export type ApiClient = typeof client & {
-  api: {
-    users: {
-      post: (options: {
-        json: { publicKey: string };
-      }) => Promise<{ user: { id: string } }>;
-    };
-    // ... existing code ...
-  };
-};

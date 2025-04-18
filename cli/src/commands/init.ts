@@ -93,9 +93,7 @@ export const initCommand = new Command("init")
         param: {
           uid: selectedSecret,
         },
-        query: {
-          version: secret.latestVersion.toString(),
-        },
+        query: {},
       });
       if (!encryptedDataResponse.ok) {
         console.error("Failed to fetch encrypted data");
