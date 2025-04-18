@@ -48,17 +48,17 @@ export const inviteStatusEnum = pgEnum("invite_status", [
 ]);
 
 // ユーザーテーブル
-export const users = pgTable("users", {
+export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   ...timestamps,
 });
 
 // ユーザーの鍵テーブル
-export const userKeys = pgTable("user_keys", {
+export const userKeysTable = pgTable("user_keys", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
+    .references(() => usersTable.id, { onDelete: "cascade" })
     .notNull(),
   publicKey: text("public_key").notNull(),
   keyId: uuid("key_id").defaultRandom().notNull().unique(),
@@ -71,7 +71,7 @@ export const userKeys = pgTable("user_keys", {
 });
 
 // シークレット（秘密情報）テーブル - 最小限の情報のみを保持
-export const secrets = pgTable("secrets", {
+export const secretsTable = pgTable("secrets", {
   id: serial("id").primaryKey(),
   uid: uuid("uid").defaultRandom().notNull().unique(),
   name: text("name").notNull(),
@@ -80,10 +80,10 @@ export const secrets = pgTable("secrets", {
 });
 
 // シークレットバージョンのメタデータテーブル
-export const secretVersions = pgTable("secret_versions", {
+export const secretVersionsTable = pgTable("secret_versions", {
   id: serial("id").primaryKey(),
   secretId: integer("secret_id")
-    .references(() => secrets.id, { onDelete: "cascade" })
+    .references(() => secretsTable.id, { onDelete: "cascade" })
     .notNull(),
   version: integer("version").notNull(),
   metadata: jsonb("metadata"),
@@ -91,15 +91,15 @@ export const secretVersions = pgTable("secret_versions", {
 });
 
 // ユーザーごとの暗号化されたシークレットデータテーブル
-export const encryptedSecretData = pgTable("encrypted_secret_data", {
+export const encryptedSecretDataTable = pgTable("encrypted_secret_data", {
   id: serial("id").primaryKey(),
   secretVersionId: integer("secret_version_id")
-    .references(() => secretVersions.id, { onDelete: "cascade" })
+    .references(() => secretVersionsTable.id, { onDelete: "cascade" })
     .notNull(),
   userId: integer("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
+    .references(() => usersTable.id, { onDelete: "cascade" })
     .notNull(),
-  userKeyId: integer("user_key_id").references(() => userKeys.id, {
+  userKeyId: integer("user_key_id").references(() => userKeysTable.id, {
     onDelete: "set null",
   }),
   encryptedData: text("encrypted_data").notNull(),
@@ -107,23 +107,23 @@ export const encryptedSecretData = pgTable("encrypted_secret_data", {
 });
 
 // 操作履歴テーブル
-export const operations = pgTable("operations", {
+export const operationsTable = pgTable("operations", {
   id: serial("id").primaryKey(),
   operationType: operationTypeEnum("operation_type").notNull(),
   userId: integer("user_id")
-    .references(() => users.id)
+    .references(() => usersTable.id)
     .notNull(),
-  userKeyId: integer("user_key_id").references(() => userKeys.id, {
+  userKeyId: integer("user_key_id").references(() => userKeysTable.id, {
     onDelete: "set null",
   }),
-  secretId: integer("secret_id").references(() => secrets.id, {
+  secretId: integer("secret_id").references(() => secretsTable.id, {
     onDelete: "cascade",
   }),
   secretVersionId: integer("secret_version_id").references(
-    () => secretVersions.id,
+    () => secretVersionsTable.id,
     { onDelete: "set null" },
   ),
-  targetUserId: integer("target_user_id").references(() => users.id, {
+  targetUserId: integer("target_user_id").references(() => usersTable.id, {
     onDelete: "set null",
   }),
   details: jsonb("details"),
@@ -132,37 +132,24 @@ export const operations = pgTable("operations", {
   ...timestamps,
 });
 
-// シークレット所有権テーブル
-export const secretOwnerships = pgTable("secret_ownerships", {
-  id: serial("id").primaryKey(),
-  secretId: integer("secret_id")
-    .references(() => secrets.id, { onDelete: "cascade" })
-    .notNull(),
-  ownerId: integer("owner_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  operationId: integer("operation_id").references(() => operations.id),
-  ...timestamps,
-});
-
 // アクセス権限テーブル
-export const accessPermissions = pgTable("access_permissions", {
+export const accessPermissionsTable = pgTable("access_permissions", {
   id: serial("id").primaryKey(),
   secretId: integer("secret_id")
-    .references(() => secrets.id, { onDelete: "cascade" })
+    .references(() => secretsTable.id, { onDelete: "cascade" })
     .notNull(),
   userId: integer("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
+    .references(() => usersTable.id, { onDelete: "cascade" })
     .notNull(),
   status: inviteStatusEnum("status").notNull().default("pending"),
-  invitedBy: integer("invited_by").references(() => users.id),
+  invitedBy: integer("invited_by").references(() => usersTable.id),
   invitedAt: timestamp("invited_at").defaultNow().notNull(),
   respondedAt: timestamp("responded_at"),
   grantOperationId: integer("grant_operation_id").references(
-    () => operations.id,
+    () => operationsTable.id,
   ),
   responseOperationId: integer("response_operation_id").references(
-    () => operations.id,
+    () => operationsTable.id,
   ),
   ...timestamps,
 });

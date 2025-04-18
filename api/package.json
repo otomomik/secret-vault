@@ -9,12 +9,17 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "@hono/node-server": "^1.14.1",
+    "@hono/swagger-ui": "^0.5.1",
+    "@hono/zod-openapi": "^0.19.5",
     "drizzle-orm": "^0.42.0",
-    "hono": "^4.7.7"
+    "drizzle-zod": "^0.7.1",
+    "hono": "^4.7.7",
+    "zod": "^3.24.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",
     "drizzle-kit": "^0.31.0",
+    "prettier": "^3.5.3",
     "tsx": "^4.7.1"
   }
 }
