@@ -5,6 +5,7 @@ import {
   secretsTable,
   secretVersionsTable,
   accessPermissionsTable,
+  userKeysTable,
 } from "./db.js";
 import { createSelectSchema } from "drizzle-zod";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
@@ -15,6 +16,8 @@ import { eq, desc, and } from "drizzle-orm";
 const secretSelectSchema = createSelectSchema(secretsTable);
 const secretVersionSelectSchema = createSelectSchema(secretVersionsTable);
 const secretsSchema = z.array(secretSelectSchema);
+const userKeySelectSchema = createSelectSchema(userKeysTable);
+const userKeysSchema = z.array(userKeySelectSchema);
 
 const secretDetailSchema = z.object({
   ...secretSelectSchema.shape,
@@ -250,6 +253,67 @@ const main = async () => {
       } catch (error) {
         console.error("シークレットの取得に失敗しました:", error);
         return c.json({ error: "シークレットの取得に失敗しました" }, 500);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/keys",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: userKeysSchema,
+            },
+          },
+          description: "ユーザーの鍵一覧を取得",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        const keys = await dbClient
+          .select()
+          .from(userKeysTable)
+          .where(eq(userKeysTable.userId, parseInt(userId)))
+          .orderBy(desc(userKeysTable.createdAt));
+
+        return c.json(keys, 200);
+      } catch (error) {
+        console.error("鍵一覧の取得に失敗しました:", error);
+        return c.json({ error: "鍵一覧の取得に失敗しました" }, 500);
       }
     },
   );

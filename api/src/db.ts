@@ -194,7 +194,7 @@ export const runMigration = async () => {
         format: "pem",
       },
     });
-    //privateKeyはprojectRootDir/.secret/private.pem
+    await fs.mkdir(path.join(projectRootDir, ".secret"), { recursive: true });
     await fs.writeFile(
       path.join(projectRootDir, ".secret", "private.pem"),
       privateKey,
