@@ -1,0 +1,15 @@
+{
+  "name": "secret-vault",
+  "private": true,
+  "scripts": {
+    "fmt": "turbo fmt"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  },
+  "workspaces": [
+    "api",
+    "cli"
+  ],
+  "packageManager": "npm@10.9.2"
+}

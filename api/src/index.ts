@@ -15,10 +15,11 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { eq, desc, and } from "drizzle-orm";
 
 const secretSelectSchema = createSelectSchema(secretsTable);
-const secretVersionSelectSchema = createSelectSchema(secretVersionsTable);
-const secretsSchema = z.array(secretSelectSchema.omit({ id: true }).extend({
-  latestVersion: z.number(),
-}));
+const secretsSchema = z.array(
+  secretSelectSchema.omit({ id: true }).extend({
+    latestVersion: z.number(),
+  }),
+);
 const userKeySelectSchema = createSelectSchema(userKeysTable);
 const userKeysSchema = z.array(userKeySelectSchema);
 
@@ -226,7 +227,7 @@ const main = async () => {
         }
 
         const secret = accessibleSecret.secret;
-        
+
         // 最新バージョンを取得
         const [latestVersion] = await dbClient
           .select({
@@ -408,10 +409,7 @@ const main = async () => {
           .limit(1);
 
         if (!encryptedData) {
-          return c.json(
-            { error: "暗号化データが見つかりません" },
-            404,
-          );
+          return c.json({ error: "暗号化データが見つかりません" }, 404);
         }
 
         return c.json({ encryptedData: encryptedData.encryptedData }, 200);
