@@ -6,8 +6,10 @@
   },
   "dependencies": {
     "@secret-vault/utils": "*",
+    "@types/inquirer": "^9.0.7",
     "commander": "^13.1.0",
-    "hono": "^4.7.7"
+    "hono": "^4.7.7",
+    "inquirer": "^12.5.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",
