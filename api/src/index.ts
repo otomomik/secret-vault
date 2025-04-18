@@ -16,13 +16,14 @@ import { eq, desc, and } from "drizzle-orm";
 
 const secretSelectSchema = createSelectSchema(secretsTable);
 const secretVersionSelectSchema = createSelectSchema(secretVersionsTable);
-const secretsSchema = z.array(secretSelectSchema);
+const secretsSchema = z.array(secretSelectSchema.omit({ id: true }).extend({
+  latestVersion: z.number(),
+}));
 const userKeySelectSchema = createSelectSchema(userKeysTable);
 const userKeysSchema = z.array(userKeySelectSchema);
 
-const secretDetailSchema = z.object({
-  ...secretSelectSchema.shape,
-  version: secretVersionSelectSchema,
+const secretDetailSchema = secretSelectSchema.omit({ id: true }).extend({
+  latestVersion: z.number(),
 });
 
 const secretCreateSchema = z.object({
@@ -101,8 +102,27 @@ const main = async () => {
             ),
           );
 
-        const secrets = accessibleSecrets.map((s) => s.secret);
-        return c.json(secrets, 200);
+        // 各シークレットの最新バージョンを取得
+        const secretsWithVersions = await Promise.all(
+          accessibleSecrets.map(async (item) => {
+            const [latestVersion] = await dbClient
+              .select({
+                version: secretVersionsTable.version,
+              })
+              .from(secretVersionsTable)
+              .where(eq(secretVersionsTable.secretId, item.secret.id))
+              .orderBy(desc(secretVersionsTable.version))
+              .limit(1);
+
+            const { id, ...secretWithoutId } = item.secret;
+            return {
+              ...secretWithoutId,
+              latestVersion: latestVersion?.version || 0,
+            };
+          }),
+        );
+
+        return c.json(secretsWithVersions, 200);
       } catch (error) {
         console.error("シークレット一覧の取得に失敗しました:", error);
         return c.json({ error: "シークレット一覧の取得に失敗しました" }, 500);
@@ -114,6 +134,127 @@ const main = async () => {
     createRoute({
       method: "get",
       path: "/api/secrets/{uid}",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+        params: z.object({
+          uid: z.string().uuid("無効なUIDです"),
+        }),
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: secretDetailSchema,
+            },
+          },
+          description: "シークレットの詳細を取得",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なリクエストです",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
+        404: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "シークレットが見つかりません",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        const { uid } = c.req.valid("param");
+
+        // ユーザーがアクセス可能なシークレットを取得
+        const [accessibleSecret] = await dbClient
+          .select({
+            secret: secretsTable,
+          })
+          .from(accessPermissionsTable)
+          .innerJoin(
+            secretsTable,
+            eq(accessPermissionsTable.secretId, secretsTable.id),
+          )
+          .where(
+            and(
+              eq(accessPermissionsTable.userId, parseInt(userId)),
+              eq(accessPermissionsTable.status, "approved"),
+              eq(secretsTable.uid, uid),
+            ),
+          )
+          .limit(1);
+
+        if (!accessibleSecret) {
+          return c.json({ error: "シークレットが見つかりません" }, 404);
+        }
+
+        const secret = accessibleSecret.secret;
+        
+        // 最新バージョンを取得
+        const [latestVersion] = await dbClient
+          .select({
+            version: secretVersionsTable.version,
+          })
+          .from(secretVersionsTable)
+          .where(eq(secretVersionsTable.secretId, secret.id))
+          .orderBy(desc(secretVersionsTable.version))
+          .limit(1);
+
+        const { id, ...secretWithoutId } = secret;
+        const response = {
+          ...secretWithoutId,
+          latestVersion: latestVersion?.version || 0,
+        };
+
+        return c.json(response, 200);
+      } catch (error) {
+        console.error("シークレットの取得に失敗しました:", error);
+        return c.json({ error: "シークレットの取得に失敗しました" }, 500);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/secrets/{uid}/encrypted-data",
       request: {
         headers: z.object({
           "x-user-id": z.string(),
@@ -143,10 +284,12 @@ const main = async () => {
         200: {
           content: {
             "application/json": {
-              schema: secretDetailSchema,
+              schema: z.object({
+                encryptedData: z.string(),
+              }),
             },
           },
-          description: "シークレットの詳細を取得",
+          description: "シークレットの暗号化データを取得",
         },
         400: {
           content: {
@@ -252,15 +395,29 @@ const main = async () => {
           );
         }
 
-        const response = {
-          ...secret,
-          version: secretVersion[0],
-        };
+        // ユーザー用の暗号化データを取得
+        const [encryptedData] = await dbClient
+          .select()
+          .from(encryptedSecretDataTable)
+          .where(
+            and(
+              eq(encryptedSecretDataTable.secretVersionId, secretVersion[0].id),
+              eq(encryptedSecretDataTable.userId, parseInt(userId)),
+            ),
+          )
+          .limit(1);
 
-        return c.json(response, 200);
+        if (!encryptedData) {
+          return c.json(
+            { error: "暗号化データが見つかりません" },
+            404,
+          );
+        }
+
+        return c.json({ encryptedData: encryptedData.encryptedData }, 200);
       } catch (error) {
-        console.error("シークレットの取得に失敗しました:", error);
-        return c.json({ error: "シークレットの取得に失敗しました" }, 500);
+        console.error("暗号化データの取得に失敗しました:", error);
+        return c.json({ error: "暗号化データの取得に失敗しました" }, 500);
       }
     },
   );
@@ -426,9 +583,10 @@ const main = async () => {
           status: "approved",
         });
 
+        const { id, ...secretWithoutId } = secret;
         const response = {
-          ...secret,
-          version,
+          ...secretWithoutId,
+          latestVersion: 1,
         };
 
         return c.json(response, 201);
