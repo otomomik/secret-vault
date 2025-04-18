@@ -1,6 +1,11 @@
 import { serve } from "@hono/node-server";
 import { runMigration } from "./db.js";
-import { dbClient, secretsTable, secretVersionsTable } from "./db.js";
+import {
+  dbClient,
+  secretsTable,
+  secretVersionsTable,
+  accessPermissionsTable,
+} from "./db.js";
 import { createSelectSchema } from "drizzle-zod";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import { z } from "zod";
@@ -25,6 +30,11 @@ const main = async () => {
     createRoute({
       method: "get",
       path: "/api/secrets",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+      },
       responses: {
         200: {
           content: {
@@ -33,6 +43,16 @@ const main = async () => {
             },
           },
           description: "シークレット一覧を取得",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
         },
         500: {
           content: {
@@ -48,8 +68,30 @@ const main = async () => {
     }),
     async (c) => {
       try {
-        const allSecrets = await dbClient.select().from(secretsTable);
-        return c.json(allSecrets, 200);
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        // ユーザーがアクセス可能なシークレットを取得
+        const accessibleSecrets = await dbClient
+          .select({
+            secret: secretsTable,
+          })
+          .from(accessPermissionsTable)
+          .innerJoin(
+            secretsTable,
+            eq(accessPermissionsTable.secretId, secretsTable.id),
+          )
+          .where(
+            and(
+              eq(accessPermissionsTable.userId, parseInt(userId)),
+              eq(accessPermissionsTable.status, "approved"),
+            ),
+          );
+
+        const secrets = accessibleSecrets.map((s) => s.secret);
+        return c.json(secrets, 200);
       } catch (error) {
         console.error("シークレット一覧の取得に失敗しました:", error);
         return c.json({ error: "シークレット一覧の取得に失敗しました" }, 500);
@@ -62,6 +104,9 @@ const main = async () => {
       method: "get",
       path: "/api/secrets/{uid}",
       request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
         params: z.object({
           uid: z.string().uuid("無効なUIDです"),
         }),
@@ -102,6 +147,16 @@ const main = async () => {
           },
           description: "無効なリクエストです",
         },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
         404: {
           content: {
             "application/json": {
@@ -126,20 +181,38 @@ const main = async () => {
     }),
     async (c) => {
       try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
         const { uid } = c.req.valid("param");
         const { version } = c.req.valid("query");
 
-        const secret = await dbClient
-          .select()
-          .from(secretsTable)
-          .where(eq(secretsTable.uid, uid))
+        // ユーザーがアクセス可能なシークレットを取得
+        const [accessibleSecret] = await dbClient
+          .select({
+            secret: secretsTable,
+          })
+          .from(accessPermissionsTable)
+          .innerJoin(
+            secretsTable,
+            eq(accessPermissionsTable.secretId, secretsTable.id),
+          )
+          .where(
+            and(
+              eq(accessPermissionsTable.userId, parseInt(userId)),
+              eq(accessPermissionsTable.status, "approved"),
+              eq(secretsTable.uid, uid),
+            ),
+          )
           .limit(1);
 
-        if (!secret || secret.length === 0) {
+        if (!accessibleSecret) {
           return c.json({ error: "シークレットが見つかりません" }, 404);
         }
 
-        const secretId = secret[0].id;
+        const secret = accessibleSecret.secret;
         let secretVersion;
         if (version !== undefined) {
           secretVersion = await dbClient
@@ -147,7 +220,7 @@ const main = async () => {
             .from(secretVersionsTable)
             .where(
               and(
-                eq(secretVersionsTable.secretId, secretId),
+                eq(secretVersionsTable.secretId, secret.id),
                 eq(secretVersionsTable.version, version),
               ),
             )
@@ -156,7 +229,7 @@ const main = async () => {
           secretVersion = await dbClient
             .select()
             .from(secretVersionsTable)
-            .where(eq(secretVersionsTable.secretId, secretId))
+            .where(eq(secretVersionsTable.secretId, secret.id))
             .orderBy(desc(secretVersionsTable.version))
             .limit(1);
         }
@@ -169,7 +242,7 @@ const main = async () => {
         }
 
         const response = {
-          ...secret[0],
+          ...secret,
           version: secretVersion[0],
         };
 

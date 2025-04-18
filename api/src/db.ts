@@ -10,6 +10,8 @@ import {
   uuid,
   boolean,
 } from "drizzle-orm/pg-core";
+import { eq } from "drizzle-orm";
+import fs from "fs/promises";
 // @ts-ignore
 import { projectRootDir } from "./config.ts";
 import { PGlite } from "@electric-sql/pglite";
@@ -17,6 +19,7 @@ import { vector as pgVector } from "@electric-sql/pglite/vector";
 import path from "path";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import crypto from "crypto";
 
 // タイムスタンプ
 const timestamps = {
@@ -162,8 +165,45 @@ const pglite = new PGlite({
 export const dbClient = drizzle(pglite);
 
 export const runMigration = async () => {
-  await dbClient.execute("CREATE EXTENSION IF NOT EXISTS vector");
   await migrate(dbClient, {
     migrationsFolder: path.join(projectRootDir, "drizzle"),
   });
+
+  const user = await dbClient
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, 1));
+  if (user.length === 0) {
+    // テストユーザーを作成
+    const [testUser] = await dbClient
+      .insert(usersTable)
+      .values({
+        id: 1,
+        username: "test",
+      })
+      .returning();
+    // 公開鍵・秘密鍵を生成
+    const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: {
+        type: "spki",
+        format: "pem",
+      },
+      privateKeyEncoding: {
+        type: "pkcs8",
+        format: "pem",
+      },
+    });
+    //privateKeyはprojectRootDir/.secret/private.pem
+    await fs.writeFile(
+      path.join(projectRootDir, ".secret", "private.pem"),
+      privateKey,
+    );
+    // テストユーザの鍵を作成
+    await dbClient.insert(userKeysTable).values({
+      userId: testUser.id,
+      publicKey: publicKey,
+      name: "test",
+    });
+  }
 };
