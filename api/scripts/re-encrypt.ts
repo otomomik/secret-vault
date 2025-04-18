@@ -1,4 +1,4 @@
-import { reEncryptForUser } from "../src/crypto.js";
+import { generateKeyPair, reEncryptForUser } from "@secret-vault/utils";
 import fs from "fs/promises";
 import path from "path";
 
@@ -46,9 +46,7 @@ async function main() {
       console.log("サンプルとして、新しい公開鍵を生成します...");
 
       // サンプルとして新しい公開鍵を生成
-      const { publicKey } = await import("../src/crypto.js").then((m) =>
-        m.generateKeyPair(),
-      );
+      const { publicKey } = generateKeyPair();
       await fs.writeFile(targetPublicKeyPath, publicKey);
       console.log(`サンプルの公開鍵を ${targetPublicKeyPath} に保存しました。`);
     }

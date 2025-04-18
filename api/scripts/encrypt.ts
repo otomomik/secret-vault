@@ -1,4 +1,4 @@
-import { encryptWithPublicKey } from "../src/crypto.js";
+import { encryptWithPublicKey } from "@secret-vault/utils";
 import fs from "fs/promises";
 import path from "path";
 

@@ -19,7 +19,7 @@ import { vector as pgVector } from "@electric-sql/pglite/vector";
 import path from "path";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import crypto from "crypto";
+import { generateKeyPair } from "@secret-vault/utils";
 
 // タイムスタンプ
 const timestamps = {
@@ -183,17 +183,7 @@ export const runMigration = async () => {
       })
       .returning();
     // 公開鍵・秘密鍵を生成
-    const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: {
-        type: "spki",
-        format: "pem",
-      },
-      privateKeyEncoding: {
-        type: "pkcs8",
-        format: "pem",
-      },
-    });
+    const { publicKey, privateKey } = generateKeyPair();
     await fs.mkdir(path.join(projectRootDir, ".secrets"), { recursive: true });
     await fs.writeFile(
       path.join(projectRootDir, ".secrets", "private.pem"),

@@ -1,4 +1,4 @@
-import { decryptWithPrivateKey } from "../src/crypto.js";
+import { decryptWithPrivateKey } from "@secret-vault/utils";
 import fs from "fs/promises";
 import path from "path";
 

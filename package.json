@@ -2,6 +2,7 @@
   "name": "secret-vault",
   "private": true,
   "scripts": {
+    "dev": "turbo dev",
     "fmt": "turbo fmt"
   },
   "devDependencies": {
@@ -9,7 +10,8 @@
   },
   "workspaces": [
     "api",
-    "cli"
+    "cli",
+    "utils"
   ],
   "packageManager": "npm@10.9.2"
 }

@@ -1,4 +1,5 @@
-import crypto from "crypto";
+// 暗号化関連の関数
+import crypto from "node:crypto";
 
 /**
  * RSA公開鍵を使って平文を暗号化する
@@ -94,4 +95,17 @@ export function reEncryptForUser(
 
   // 新しい公開鍵で再暗号化
   return encryptWithPublicKey(decrypted, targetPublicKey);
+}
+
+// データベース関連の関数
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * プロジェクトのルートディレクトリを取得する
+ * @param importMetaUrl import.meta.url
+ * @returns プロジェクトのルートディレクトリのパス
+ */
+export function getProjectRootDir(importMetaUrl: string): string {
+  return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), "..");
 }

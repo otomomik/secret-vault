@@ -1,6 +1,17 @@
 {
-  "name": "cli",
+  "name": "@secret-vault/cli",
+  "type": "module",
   "scripts": {
-    "fmt": "prettier --write ."
+    "dev": "tsx src/main.ts",
+    "fmt": "prettier --write . --ignore-path .gitignore"
+  },
+  "dependencies": {
+    "@secret-vault/utils": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "prettier": "^3.5.3",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
   }
 }

@@ -1,8 +1,4 @@
-import path from "path";
-import { fileURLToPath } from "url";
+import { getProjectRootDir } from "@secret-vault/utils";
 
 // プロジェクトのルートディレクトリ
-export const projectRootDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const projectRootDir = getProjectRootDir(import.meta.url);

@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "fmt": "prettier --write .",
+    "fmt": "prettier --write . --ignore-path .gitignore",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
@@ -11,6 +11,7 @@
     "@hono/node-server": "^1.14.1",
     "@hono/swagger-ui": "^0.5.1",
     "@hono/zod-openapi": "^0.19.5",
+    "@secret-vault/utils": "*",
     "drizzle-orm": "^0.42.0",
     "drizzle-zod": "^0.7.1",
     "hono": "^4.7.7",
