@@ -138,6 +138,119 @@ const routes = app
   )
   .openapi(
     createRoute({
+      method: "post",
+      path: "/api/secrets",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+        body: {
+          content: {
+            "application/json": {
+              schema: secretCreateSchema,
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          content: {
+            "application/json": {
+              schema: secretDetailSchema,
+            },
+          },
+          description: "シークレットが作成されました",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なリクエストです",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        const body = c.req.valid("json");
+        const { name, description, encryptedData, metadata } = body;
+
+        // シークレットを作成
+        const [secret] = await dbClient
+          .insert(secretsTable)
+          .values({
+            name,
+            description,
+          })
+          .returning();
+
+        // 最初のバージョンを作成
+        const [version] = await dbClient
+          .insert(secretVersionsTable)
+          .values({
+            secretId: secret.id,
+            version: 1,
+            metadata: metadata || {},
+          })
+          .returning();
+
+        // 暗号化されたデータを保存
+        await dbClient.insert(encryptedSecretDataTable).values({
+          secretVersionId: version.id,
+          userId: parseInt(userId),
+          encryptedData,
+        });
+
+        // 作成者にアクセス権限を付与
+        await dbClient.insert(accessPermissionsTable).values({
+          secretId: secret.id,
+          userId: parseInt(userId),
+          status: "approved",
+        });
+
+        const { id, ...secretWithoutId } = secret;
+        const response = {
+          ...secretWithoutId,
+          latestVersion: 1,
+        };
+
+        return c.json(response, 201);
+      } catch (error) {
+        console.error("シークレットの作成に失敗しました:", error);
+        return c.json({ error: "シークレットの作成に失敗しました" }, 500);
+      }
+    },
+  )
+  .openapi(
+    createRoute({
       method: "get",
       path: "/api/secrets/{uid}",
       request: {
@@ -475,87 +588,30 @@ const routes = app
   .openapi(
     createRoute({
       method: "get",
-      path: "/api/keys",
+      path: "/api/secrets/{uid}/user-keys",
       request: {
         headers: z.object({
           "x-user-id": z.string(),
+        }),
+        params: z.object({
+          uid: z.string().uuid("無効なUIDです"),
         }),
       },
       responses: {
         200: {
           content: {
             "application/json": {
-              schema: userKeysSchema,
-            },
-          },
-          description: "ユーザーの鍵一覧を取得",
-        },
-        401: {
-          content: {
-            "application/json": {
               schema: z.object({
-                error: z.string(),
+                userKeys: z.array(
+                  z.object({
+                    userId: z.number(),
+                    publicKey: z.string(),
+                  }),
+                ),
               }),
             },
           },
-          description: "認証エラー",
-        },
-        500: {
-          content: {
-            "application/json": {
-              schema: z.object({
-                error: z.string(),
-              }),
-            },
-          },
-          description: "エラーが発生しました",
-        },
-      },
-    }),
-    async (c) => {
-      try {
-        const userId = c.req.header("x-user-id");
-        if (!userId) {
-          return c.json({ error: "認証が必要です" }, 401);
-        }
-
-        const keys = await dbClient
-          .select()
-          .from(userKeysTable)
-          .where(eq(userKeysTable.userId, parseInt(userId)))
-          .orderBy(desc(userKeysTable.createdAt));
-
-        return c.json(keys, 200);
-      } catch (error) {
-        console.error("鍵一覧の取得に失敗しました:", error);
-        return c.json({ error: "鍵一覧の取得に失敗しました" }, 500);
-      }
-    },
-  )
-  .openapi(
-    createRoute({
-      method: "post",
-      path: "/api/secrets",
-      request: {
-        headers: z.object({
-          "x-user-id": z.string(),
-        }),
-        body: {
-          content: {
-            "application/json": {
-              schema: secretCreateSchema,
-            },
-          },
-        },
-      },
-      responses: {
-        201: {
-          content: {
-            "application/json": {
-              schema: secretDetailSchema,
-            },
-          },
-          description: "シークレットが作成されました",
+          description: "シークレットにアクセスできるユーザーの鍵情報を取得",
         },
         400: {
           content: {
@@ -577,6 +633,16 @@ const routes = app
           },
           description: "認証エラー",
         },
+        404: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "シークレットが見つかりません",
+        },
         500: {
           content: {
             "application/json": {
@@ -596,52 +662,69 @@ const routes = app
           return c.json({ error: "認証が必要です" }, 401);
         }
 
-        const body = c.req.valid("json");
-        const { name, description, encryptedData, metadata } = body;
+        const { uid } = c.req.valid("param");
 
-        // シークレットを作成
-        const [secret] = await dbClient
-          .insert(secretsTable)
-          .values({
-            name,
-            description,
+        // ユーザーがアクセス可能なシークレットを取得
+        const [accessibleSecret] = await dbClient
+          .select({
+            secret: secretsTable,
           })
-          .returning();
+          .from(accessPermissionsTable)
+          .innerJoin(
+            secretsTable,
+            eq(accessPermissionsTable.secretId, secretsTable.id),
+          )
+          .where(
+            and(
+              eq(accessPermissionsTable.userId, parseInt(userId)),
+              eq(accessPermissionsTable.status, "approved"),
+              eq(secretsTable.uid, uid),
+            ),
+          )
+          .limit(1);
 
-        // 最初のバージョンを作成
-        const [version] = await dbClient
-          .insert(secretVersionsTable)
-          .values({
-            secretId: secret.id,
-            version: 1,
-            metadata: metadata || {},
+        if (!accessibleSecret) {
+          return c.json({ error: "シークレットが見つかりません" }, 404);
+        }
+
+        const secret = accessibleSecret.secret;
+
+        // シークレットにアクセスできるユーザーを取得
+        const usersWithAccess = await dbClient
+          .select({
+            userId: accessPermissionsTable.userId,
           })
-          .returning();
+          .from(accessPermissionsTable)
+          .where(
+            and(
+              eq(accessPermissionsTable.secretId, secret.id),
+              eq(accessPermissionsTable.status, "approved"),
+            ),
+          );
 
-        // 暗号化されたデータを保存
-        await dbClient.insert(encryptedSecretDataTable).values({
-          secretVersionId: version.id,
-          userId: parseInt(userId),
-          encryptedData,
-        });
+        // 各ユーザーの最新の公開鍵を取得
+        const userKeys = await Promise.all(
+          usersWithAccess.map(async (user) => {
+            const [latestKey] = await dbClient
+              .select({
+                publicKey: userKeysTable.publicKey,
+              })
+              .from(userKeysTable)
+              .where(eq(userKeysTable.userId, user.userId))
+              .orderBy(desc(userKeysTable.createdAt))
+              .limit(1);
 
-        // 作成者にアクセス権限を付与
-        await dbClient.insert(accessPermissionsTable).values({
-          secretId: secret.id,
-          userId: parseInt(userId),
-          status: "approved",
-        });
+            return {
+              userId: user.userId,
+              publicKey: latestKey?.publicKey || "",
+            };
+          }),
+        );
 
-        const { id, ...secretWithoutId } = secret;
-        const response = {
-          ...secretWithoutId,
-          latestVersion: 1,
-        };
-
-        return c.json(response, 201);
+        return c.json({ userKeys }, 200);
       } catch (error) {
-        console.error("シークレットの作成に失敗しました:", error);
-        return c.json({ error: "シークレットの作成に失敗しました" }, 500);
+        console.error("ユーザー鍵情報の取得に失敗しました:", error);
+        return c.json({ error: "ユーザー鍵情報の取得に失敗しました" }, 500);
       }
     },
   )
