@@ -8,6 +8,7 @@ import {
   userKeysTable,
   encryptedSecretDataTable,
   usersTable,
+  operationsTable,
 } from "./db.js";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
@@ -22,7 +23,6 @@ const secretsSchema = z.array(
   }),
 );
 const userKeySelectSchema = createSelectSchema(userKeysTable);
-const userKeysSchema = z.array(userKeySelectSchema);
 
 const secretDetailSchema = secretSelectSchema.omit({ id: true }).extend({
   latestVersion: z.number(),
@@ -32,6 +32,16 @@ const secretCreateSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   encryptedData: z.string(),
+  metadata: z.record(z.string()).optional(),
+});
+
+const secretUpdateSchema = z.object({
+  encryptedDataEntries: z.array(
+    z.object({
+      userId: z.number(),
+      encryptedData: z.string(),
+    }),
+  ),
   metadata: z.record(z.string()).optional(),
 });
 
@@ -415,6 +425,205 @@ const routes = app
       } catch (error) {
         console.error("シークレットの取得に失敗しました:", error);
         return c.json({ error: "シークレットの取得に失敗しました" }, 500);
+      }
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "put",
+      path: "/api/secrets/{uid}",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+        params: z.object({
+          uid: z.string().uuid("無効なUIDです"),
+        }),
+        body: {
+          content: {
+            "application/json": {
+              schema: secretUpdateSchema,
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: secretDetailSchema,
+            },
+          },
+          description: "シークレットが更新されました",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なリクエストです",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
+        403: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "アクセス権限がありません",
+        },
+        404: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "シークレットが見つかりません",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        const { uid } = c.req.valid("param");
+        const { encryptedDataEntries, metadata } = c.req.valid("json");
+
+        // ユーザーがアクセス可能なシークレットを取得
+        const [accessibleSecret] = await dbClient
+          .select({
+            secret: secretsTable,
+          })
+          .from(accessPermissionsTable)
+          .innerJoin(
+            secretsTable,
+            eq(accessPermissionsTable.secretId, secretsTable.id),
+          )
+          .where(
+            and(
+              eq(accessPermissionsTable.userId, parseInt(userId)),
+              eq(accessPermissionsTable.status, "approved"),
+              eq(secretsTable.uid, uid),
+            ),
+          )
+          .limit(1);
+
+        if (!accessibleSecret) {
+          return c.json({ error: "シークレットが見つかりません" }, 404);
+        }
+
+        const secret = accessibleSecret.secret;
+
+        // アクセス権限を持つユーザー数を取得
+        const accessPermissions = await dbClient
+          .select({
+            userId: accessPermissionsTable.userId,
+          })
+          .from(accessPermissionsTable)
+          .where(
+            and(
+              eq(accessPermissionsTable.secretId, secret.id),
+              eq(accessPermissionsTable.status, "approved"),
+            ),
+          );
+
+        // リクエストの暗号化データエントリ数とアクセス権限を持つユーザー数が一致するか確認
+        if (encryptedDataEntries.length !== accessPermissions.length) {
+          return c.json(
+            {
+              error:
+                "暗号化データエントリ数がアクセス権限を持つユーザー数と一致しません",
+              expected: accessPermissions.length,
+              received: encryptedDataEntries.length,
+            },
+            400,
+          );
+        }
+
+        // 最新バージョンを取得
+        const [latestVersion] = await dbClient
+          .select({
+            version: secretVersionsTable.version,
+          })
+          .from(secretVersionsTable)
+          .where(eq(secretVersionsTable.secretId, secret.id))
+          .orderBy(desc(secretVersionsTable.version))
+          .limit(1);
+
+        const newVersion = (latestVersion?.version || 0) + 1;
+
+        // 新しいバージョンを作成
+        const [version] = await dbClient
+          .insert(secretVersionsTable)
+          .values({
+            secretId: secret.id,
+            version: newVersion,
+            metadata: metadata || {},
+          })
+          .returning();
+
+        // 各ユーザーの暗号化データを保存
+        await Promise.all(
+          encryptedDataEntries.map((entry) =>
+            dbClient.insert(encryptedSecretDataTable).values({
+              secretVersionId: version.id,
+              userId: entry.userId,
+              encryptedData: entry.encryptedData,
+            }),
+          ),
+        );
+
+        // 操作履歴を記録
+        await dbClient.insert(operationsTable).values({
+          operationType: "update_secret",
+          userId: parseInt(userId),
+          secretId: secret.id,
+          secretVersionId: version.id,
+          details: {
+            previousVersion: latestVersion?.version || 0,
+            newVersion: newVersion,
+          },
+        });
+
+        const { id, ...secretWithoutId } = secret;
+        const response = {
+          ...secretWithoutId,
+          latestVersion: newVersion,
+        };
+
+        return c.json(response, 200);
+      } catch (error) {
+        console.error("シークレットの更新に失敗しました:", error);
+        return c.json({ error: "シークレットの更新に失敗しました" }, 500);
       }
     },
   )
