@@ -1,4 +1,4 @@
 node_modules
 .DS_Store
 .turbo
-.secret-value.json
+.secret-vault.json

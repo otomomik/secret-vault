@@ -4,9 +4,11 @@ import { join } from "path";
 import { client } from "../api/client";
 import { loadConfig } from "../utils/config";
 import inquirer from "inquirer";
+import { saveToCache } from "../utils/cache";
 
 interface SecretValueConfig {
   uid?: string;
+  latestVersion?: number;
   [key: string]: any;
 }
 
@@ -20,7 +22,7 @@ export const initCommand = new Command("init")
         process.exit(1);
       }
 
-      const configPath = join(process.cwd(), ".secret-value.json");
+      const configPath = join(process.cwd(), ".secret-vault.json");
       let existingConfig: SecretValueConfig = {};
       let shouldOverwrite = false;
 
@@ -74,10 +76,42 @@ export const initCommand = new Command("init")
         },
       ]);
 
+      const secret = secrets.find(
+        (secret: any) => secret.uid === selectedSecret,
+      );
+      if (!secret) {
+        console.error("Secret not found");
+        process.exit(1);
+      }
+
+      const encryptedDataResponse = await client.api.secrets[":uid"][
+        "encrypted-data"
+      ].$get({
+        header: {
+          "x-user-id": config.userId,
+        },
+        param: {
+          uid: selectedSecret,
+        },
+        query: {
+          version: secret.latestVersion.toString(),
+        },
+      });
+      if (!encryptedDataResponse.ok) {
+        console.error("Failed to fetch encrypted data");
+        process.exit(1);
+      }
+
+      const { encryptedData } = await encryptedDataResponse.json();
+
+      // Save to cache
+      saveToCache(selectedSecret, secret.latestVersion, encryptedData);
+
       // Save the selected secret UID
       const newConfig: SecretValueConfig = {
         ...existingConfig,
         uid: selectedSecret,
+        latestVersion: secret.latestVersion,
       };
 
       writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
