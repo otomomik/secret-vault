@@ -1,12 +1,13 @@
-import { generateKeyPair } from "@secret-vault/utils";
+import { Command } from "commander";
+import { loginCommand } from "./commands/login";
 
-const main = async () => {
-  console.log("Hello, World!");
+const program = new Command();
 
-  // 鍵ペアを生成する例
-  const { publicKey, privateKey } = generateKeyPair();
-  console.log("Generated public key:", publicKey);
-  console.log("Generated private key:", privateKey);
-};
+program
+  .name("secret-vault")
+  .description("CLI for Secret Vault")
+  .version("1.0.0");
 
-main();
+program.addCommand(loginCommand);
+
+program.parse();

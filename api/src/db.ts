@@ -168,36 +168,4 @@ export const runMigration = async () => {
   await migrate(dbClient, {
     migrationsFolder: path.join(projectRootDir, "drizzle"),
   });
-
-  const user = await dbClient
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, 1));
-  if (user.length === 0) {
-    // テストユーザーを作成
-    const [testUser] = await dbClient
-      .insert(usersTable)
-      .values({
-        id: 1,
-        username: "test",
-      })
-      .returning();
-    // 公開鍵・秘密鍵を生成
-    const { publicKey, privateKey } = generateKeyPair();
-    await fs.mkdir(path.join(projectRootDir, ".secrets"), { recursive: true });
-    await fs.writeFile(
-      path.join(projectRootDir, ".secrets", "private.pem"),
-      privateKey,
-    );
-    await fs.writeFile(
-      path.join(projectRootDir, ".secrets", "public.pem"),
-      publicKey,
-    );
-    // テストユーザの鍵を作成
-    await dbClient.insert(userKeysTable).values({
-      userId: testUser.id,
-      publicKey: publicKey,
-      name: "test",
-    });
-  }
 };

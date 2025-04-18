@@ -2,11 +2,12 @@
   "name": "@secret-vault/cli",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/main.ts",
     "fmt": "prettier --write . --ignore-path .gitignore"
   },
   "dependencies": {
-    "@secret-vault/utils": "*"
+    "@secret-vault/utils": "*",
+    "commander": "^13.1.0",
+    "hono": "^4.7.7"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",

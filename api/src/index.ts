@@ -7,8 +7,9 @@ import {
   accessPermissionsTable,
   userKeysTable,
   encryptedSecretDataTable,
+  usersTable,
 } from "./db.js";
-import { createSelectSchema } from "drizzle-zod";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import { z } from "zod";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -34,12 +35,17 @@ const secretCreateSchema = z.object({
   metadata: z.record(z.string()).optional(),
 });
 
-const main = async () => {
-  await runMigration();
+const userCreateSchema = createInsertSchema(usersTable).extend({
+  publicKey: z.string(),
+});
+const userSelectSchema = createSelectSchema(usersTable);
 
-  const app = new OpenAPIHono();
+runMigration();
 
-  app.openapi(
+const app = new OpenAPIHono();
+
+const routes = app
+  .openapi(
     createRoute({
       method: "get",
       path: "/api/secrets",
@@ -129,9 +135,8 @@ const main = async () => {
         return c.json({ error: "シークレット一覧の取得に失敗しました" }, 500);
       }
     },
-  );
-
-  app.openapi(
+  )
+  .openapi(
     createRoute({
       method: "get",
       path: "/api/secrets/{uid}",
@@ -250,9 +255,8 @@ const main = async () => {
         return c.json({ error: "シークレットの取得に失敗しました" }, 500);
       }
     },
-  );
-
-  app.openapi(
+  )
+  .openapi(
     createRoute({
       method: "get",
       path: "/api/secrets/{uid}/encrypted-data",
@@ -418,9 +422,8 @@ const main = async () => {
         return c.json({ error: "暗号化データの取得に失敗しました" }, 500);
       }
     },
-  );
-
-  app.openapi(
+  )
+  .openapi(
     createRoute({
       method: "get",
       path: "/api/keys",
@@ -479,9 +482,8 @@ const main = async () => {
         return c.json({ error: "鍵一覧の取得に失敗しました" }, 500);
       }
     },
-  );
-
-  app.openapi(
+  )
+  .openapi(
     createRoute({
       method: "post",
       path: "/api/secrets",
@@ -593,26 +595,115 @@ const main = async () => {
         return c.json({ error: "シークレットの作成に失敗しました" }, 500);
       }
     },
+  )
+  .openapi(
+    createRoute({
+      method: "post",
+      path: "/api/users",
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: userCreateSchema,
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          content: {
+            "application/json": {
+              schema: userSelectSchema,
+            },
+          },
+          description: "ユーザーが作成されました",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なリクエストです",
+        },
+        409: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "ユーザー名が既に使用されています",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { username, publicKey } = c.req.valid("json");
+
+        const existingUser = await dbClient
+          .select()
+          .from(usersTable)
+          .where(eq(usersTable.username, username))
+          .limit(1);
+
+        if (existingUser.length > 0) {
+          return c.json({ error: "このユーザー名は既に使用されています" }, 409);
+        }
+
+        // ユーザーの作成
+        const [user] = await dbClient
+          .insert(usersTable)
+          .values({
+            username,
+          })
+          .returning();
+
+        // ユーザーの鍵を作成
+        await dbClient.insert(userKeysTable).values({
+          userId: user.id,
+          publicKey,
+          name: "Default Key",
+        });
+
+        return c.json(user, 201);
+      } catch (error) {
+        console.error("ユーザー作成に失敗しました:", error);
+        return c.json({ error: "ユーザー作成に失敗しました" }, 500);
+      }
+    },
   );
 
-  app.doc("/doc", {
-    openapi: "3.0.0",
-    info: {
-      version: "0.0.1",
-      title: "Secret Vault API",
-    },
-  });
-  app.get("/docs", swaggerUI({ url: "/doc" }));
+app.doc("/doc", {
+  openapi: "3.0.0",
+  info: {
+    version: "0.0.1",
+    title: "Secret Vault API",
+  },
+});
+app.get("/docs", swaggerUI({ url: "/doc" }));
 
-  serve(
-    {
-      fetch: app.fetch,
-      port: 3000,
-    },
-    (info) => {
-      console.log(`Server is running on http://localhost:${info.port}`);
-    },
-  );
-};
+serve(
+  {
+    fetch: app.fetch,
+    port: 3000,
+  },
+  (info) => {
+    console.log(`Server is running on http://localhost:${info.port}`);
+  },
+);
 
-main();
+export type App = typeof routes;
