@@ -6,6 +6,7 @@ import {
   secretVersionsTable,
   accessPermissionsTable,
   userKeysTable,
+  encryptedSecretDataTable,
 } from "./db.js";
 import { createSelectSchema } from "drizzle-zod";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
@@ -22,6 +23,13 @@ const userKeysSchema = z.array(userKeySelectSchema);
 const secretDetailSchema = z.object({
   ...secretSelectSchema.shape,
   version: secretVersionSelectSchema,
+});
+
+const secretCreateSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  encryptedData: z.string(),
+  metadata: z.record(z.string()).optional(),
 });
 
 const main = async () => {
@@ -314,6 +322,119 @@ const main = async () => {
       } catch (error) {
         console.error("鍵一覧の取得に失敗しました:", error);
         return c.json({ error: "鍵一覧の取得に失敗しました" }, 500);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/secrets",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+        body: {
+          content: {
+            "application/json": {
+              schema: secretCreateSchema,
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          content: {
+            "application/json": {
+              schema: secretDetailSchema,
+            },
+          },
+          description: "シークレットが作成されました",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なリクエストです",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        const body = c.req.valid("json");
+        const { name, description, encryptedData, metadata } = body;
+
+        // シークレットを作成
+        const [secret] = await dbClient
+          .insert(secretsTable)
+          .values({
+            name,
+            description,
+          })
+          .returning();
+
+        // 最初のバージョンを作成
+        const [version] = await dbClient
+          .insert(secretVersionsTable)
+          .values({
+            secretId: secret.id,
+            version: 1,
+            metadata: metadata || {},
+          })
+          .returning();
+
+        // 暗号化されたデータを保存
+        await dbClient.insert(encryptedSecretDataTable).values({
+          secretVersionId: version.id,
+          userId: parseInt(userId),
+          encryptedData,
+        });
+
+        // 作成者にアクセス権限を付与
+        await dbClient.insert(accessPermissionsTable).values({
+          secretId: secret.id,
+          userId: parseInt(userId),
+          status: "approved",
+        });
+
+        const response = {
+          ...secret,
+          version,
+        };
+
+        return c.json(response, 201);
+      } catch (error) {
+        console.error("シークレットの作成に失敗しました:", error);
+        return c.json({ error: "シークレットの作成に失敗しました" }, 500);
       }
     },
   );

@@ -194,10 +194,14 @@ export const runMigration = async () => {
         format: "pem",
       },
     });
-    await fs.mkdir(path.join(projectRootDir, ".secret"), { recursive: true });
+    await fs.mkdir(path.join(projectRootDir, ".secrets"), { recursive: true });
     await fs.writeFile(
-      path.join(projectRootDir, ".secret", "private.pem"),
+      path.join(projectRootDir, ".secrets", "private.pem"),
       privateKey,
+    );
+    await fs.writeFile(
+      path.join(projectRootDir, ".secrets", "public.pem"),
+      publicKey,
     );
     // テストユーザの鍵を作成
     await dbClient.insert(userKeysTable).values({
