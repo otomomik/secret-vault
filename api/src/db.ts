@@ -9,9 +9,8 @@ import {
   jsonb,
   uuid,
   boolean,
+  unique,
 } from "drizzle-orm/pg-core";
-import { eq } from "drizzle-orm";
-import fs from "fs/promises";
 // @ts-ignore
 import { projectRootDir } from "./config.ts";
 import { PGlite } from "@electric-sql/pglite";
@@ -19,7 +18,6 @@ import { vector as pgVector } from "@electric-sql/pglite/vector";
 import path from "path";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { generateKeyPair } from "@secret-vault/utils";
 
 // タイムスタンプ
 const timestamps = {
@@ -83,31 +81,53 @@ export const secretsTable = pgTable("secrets", {
 });
 
 // シークレットバージョンのメタデータテーブル
-export const secretVersionsTable = pgTable("secret_versions", {
-  id: serial("id").primaryKey(),
-  secretId: integer("secret_id")
-    .references(() => secretsTable.id, { onDelete: "cascade" })
-    .notNull(),
-  version: integer("version").notNull(),
-  metadata: jsonb("metadata"),
-  ...timestamps,
-});
+export const secretVersionsTable = pgTable(
+  "secret_versions",
+  {
+    id: serial("id").primaryKey(),
+    secretId: integer("secret_id")
+      .references(() => secretsTable.id, { onDelete: "cascade" })
+      .notNull(),
+    version: integer("version").notNull(),
+    metadata: jsonb("metadata"),
+    ...timestamps,
+  },
+  (table) => [
+    // シークレットIDとバージョンの組み合わせは一意である必要がある
+    {
+      secretVersionUnique: unique().on(table.secretId, table.version),
+    },
+  ],
+);
 
 // ユーザーごとの暗号化されたシークレットデータテーブル
-export const encryptedSecretDataTable = pgTable("encrypted_secret_data", {
-  id: serial("id").primaryKey(),
-  secretVersionId: integer("secret_version_id")
-    .references(() => secretVersionsTable.id, { onDelete: "cascade" })
-    .notNull(),
-  userId: integer("user_id")
-    .references(() => usersTable.id, { onDelete: "cascade" })
-    .notNull(),
-  userKeyId: integer("user_key_id").references(() => userKeysTable.id, {
-    onDelete: "set null",
-  }),
-  encryptedData: text("encrypted_data").notNull(),
-  ...timestamps,
-});
+export const encryptedSecretDataTable = pgTable(
+  "encrypted_secret_data",
+  {
+    id: serial("id").primaryKey(),
+    secretVersionId: integer("secret_version_id")
+      .references(() => secretVersionsTable.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: integer("user_id")
+      .references(() => usersTable.id, { onDelete: "cascade" })
+      .notNull(),
+    userKeyId: integer("user_key_id").references(() => userKeysTable.id, {
+      onDelete: "cascade",
+    }),
+    encryptedData: text("encrypted_data").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    {
+      // ユーザー、シークレットバージョン、鍵の組み合わせが一意である必要がある
+      userSecretKeyUnique: unique().on(
+        table.userId,
+        table.secretVersionId,
+        table.userKeyId,
+      ),
+    },
+  ],
+);
 
 // 操作履歴テーブル
 export const operationsTable = pgTable("operations", {
@@ -136,26 +156,35 @@ export const operationsTable = pgTable("operations", {
 });
 
 // アクセス権限テーブル
-export const accessPermissionsTable = pgTable("access_permissions", {
-  id: serial("id").primaryKey(),
-  secretId: integer("secret_id")
-    .references(() => secretsTable.id, { onDelete: "cascade" })
-    .notNull(),
-  userId: integer("user_id")
-    .references(() => usersTable.id, { onDelete: "cascade" })
-    .notNull(),
-  status: inviteStatusEnum("status").notNull().default("pending"),
-  invitedBy: integer("invited_by").references(() => usersTable.id),
-  invitedAt: timestamp("invited_at").defaultNow().notNull(),
-  respondedAt: timestamp("responded_at"),
-  grantOperationId: integer("grant_operation_id").references(
-    () => operationsTable.id,
-  ),
-  responseOperationId: integer("response_operation_id").references(
-    () => operationsTable.id,
-  ),
-  ...timestamps,
-});
+export const accessPermissionsTable = pgTable(
+  "access_permissions",
+  {
+    id: serial("id").primaryKey(),
+    secretId: integer("secret_id")
+      .references(() => secretsTable.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: integer("user_id")
+      .references(() => usersTable.id, { onDelete: "cascade" })
+      .notNull(),
+    status: inviteStatusEnum("status").notNull().default("pending"),
+    invitedBy: integer("invited_by").references(() => usersTable.id),
+    invitedAt: timestamp("invited_at").defaultNow().notNull(),
+    respondedAt: timestamp("responded_at"),
+    grantOperationId: integer("grant_operation_id").references(
+      () => operationsTable.id,
+    ),
+    responseOperationId: integer("response_operation_id").references(
+      () => operationsTable.id,
+    ),
+    ...timestamps,
+  },
+  (table) => [
+    {
+      // 同じユーザーに対して同じシークレットのアクセス権限は一意である必要がある
+      userSecretUnique: unique().on(table.userId, table.secretId),
+    },
+  ],
+);
 
 // db
 const pglite = new PGlite({
