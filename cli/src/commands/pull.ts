@@ -1,14 +1,8 @@
 import { Command } from "commander";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join } from "path";
 import { client } from "../api/client";
 import { loadConfig } from "../utils/config";
 import { saveToCache } from "../utils/cache";
-
-interface SecretValueConfig {
-  uid?: string;
-  latestVersion?: number;
-}
+import { loadVaultConfig, saveVaultConfig } from "../utils/vault-config";
 
 export const pullCommand = new Command("pull")
   .description("Pull latest version of encrypted data")
@@ -21,16 +15,7 @@ export const pullCommand = new Command("pull")
         process.exit(1);
       }
 
-      const configPath = join(process.cwd(), ".secret-vault.json");
-      if (!existsSync(configPath)) {
-        console.error("Secret vault not initialized. Please run init first.");
-        process.exit(1);
-      }
-
-      const vaultConfig: SecretValueConfig = JSON.parse(
-        readFileSync(configPath, "utf-8"),
-      );
-
+      const vaultConfig = loadVaultConfig();
       if (!vaultConfig.uid) {
         console.error("No secret selected. Please run init first.");
         process.exit(1);
@@ -57,6 +42,11 @@ export const pullCommand = new Command("pull")
       const targetVersion = options.version
         ? parseInt(options.version, 10)
         : secret.latestVersion;
+
+      if (!targetVersion) {
+        console.error("Invalid secret: latestVersion is missing");
+        process.exit(1);
+      }
 
       // Check if we already have the requested version
       if (vaultConfig.latestVersion === targetVersion && !options.version) {
@@ -88,11 +78,11 @@ export const pullCommand = new Command("pull")
 
       // Update config with new version (only if pulling latest)
       if (!options.version) {
-        const newConfig: SecretValueConfig = {
+        const newConfig = {
           ...vaultConfig,
           latestVersion: secret.latestVersion,
         };
-        writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
+        saveVaultConfig(newConfig);
       }
 
       console.log(`Successfully pulled version ${targetVersion}!`);

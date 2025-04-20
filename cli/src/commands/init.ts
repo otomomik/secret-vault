@@ -1,16 +1,9 @@
 import { Command } from "commander";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join } from "path";
 import { client } from "../api/client";
 import { loadConfig } from "../utils/config";
 import inquirer from "inquirer";
 import { saveToCache } from "../utils/cache";
-
-interface SecretValueConfig {
-  uid?: string;
-  latestVersion?: number;
-  [key: string]: any;
-}
+import { loadVaultConfig, saveVaultConfig } from "../utils/vault-config";
 
 export const initCommand = new Command("init")
   .description("Initialize a secret vault in the current directory")
@@ -22,27 +15,23 @@ export const initCommand = new Command("init")
         process.exit(1);
       }
 
-      const configPath = join(process.cwd(), ".secret-vault.json");
-      let existingConfig: SecretValueConfig = {};
+      let existingConfig = loadVaultConfig();
       let shouldOverwrite = false;
 
-      if (existsSync(configPath)) {
-        existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-        if (existingConfig.uid) {
-          const { overwrite } = await inquirer.prompt([
-            {
-              type: "confirm",
-              name: "overwrite",
-              message:
-                "A secret vault already exists in this directory. Do you want to overwrite it?",
-              default: false,
-            },
-          ]);
-          shouldOverwrite = overwrite;
-          if (!shouldOverwrite) {
-            console.log("Operation cancelled");
-            process.exit(0);
-          }
+      if (existingConfig.uid) {
+        const { overwrite } = await inquirer.prompt([
+          {
+            type: "confirm",
+            name: "overwrite",
+            message:
+              "A secret vault already exists in this directory. Do you want to overwrite it?",
+            default: false,
+          },
+        ]);
+        shouldOverwrite = overwrite;
+        if (!shouldOverwrite) {
+          console.log("Operation cancelled");
+          process.exit(0);
         }
       }
 
@@ -103,16 +92,20 @@ export const initCommand = new Command("init")
       const { encryptedData } = await encryptedDataResponse.json();
 
       // Save to cache
+      if (!secret.latestVersion) {
+        console.error("Invalid secret: latestVersion is missing");
+        process.exit(1);
+      }
       saveToCache(selectedSecret, secret.latestVersion, encryptedData);
 
       // Save the selected secret UID
-      const newConfig: SecretValueConfig = {
+      const newConfig = {
         ...existingConfig,
         uid: selectedSecret,
         latestVersion: secret.latestVersion,
       };
 
-      writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
+      saveVaultConfig(newConfig);
       console.log("Secret vault initialized successfully!");
     } catch (error) {
       console.error("Error initializing secret vault:", error);
