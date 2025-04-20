@@ -54,6 +54,17 @@ runMigration();
 
 const app = new OpenAPIHono();
 
+// テーブル名の列挙型
+const TableNameEnum = z.enum([
+  "users",
+  "user_keys",
+  "secrets",
+  "secret_versions",
+  "encrypted_secret_data",
+  "access_permissions",
+  "operations",
+]);
+
 const routes = app
   .openapi(
     createRoute({
@@ -244,6 +255,19 @@ const routes = app
           secretId: secret.id,
           userId: parseInt(userId),
           status: "approved",
+        });
+
+        // 操作履歴を記録
+        await dbClient.insert(operationsTable).values({
+          operationType: "create_secret",
+          userId: parseInt(userId),
+          secretId: secret.id,
+          secretVersionId: version.id,
+          details: {
+            name,
+            description,
+            version: 1,
+          },
         });
 
         const { id, ...secretWithoutId } = secret;
@@ -729,6 +753,17 @@ const routes = app
 
         const secret = accessibleSecret.secret;
 
+        // 操作履歴を記録
+        await dbClient.insert(operationsTable).values({
+          operationType: "delete_secret",
+          userId: parseInt(userId),
+          secretId: secret.id,
+          details: {
+            name: secret.name,
+            description: secret.description,
+          },
+        });
+
         // シークレットを削除
         await dbClient
           .delete(secretsTable)
@@ -900,6 +935,17 @@ const routes = app
         if (!encryptedData) {
           return c.json({ error: "暗号化データが見つかりません" }, 404);
         }
+
+        // 操作履歴を記録
+        await dbClient.insert(operationsTable).values({
+          operationType: "access_secret",
+          userId: parseInt(userId),
+          secretId: secret.id,
+          secretVersionId: secretVersion[0].id,
+          details: {
+            version: secretVersion[0].version,
+          },
+        });
 
         return c.json({ encryptedData: encryptedData.encryptedData }, 200);
       } catch (error) {
@@ -1138,6 +1184,90 @@ const routes = app
       } catch (error) {
         console.error("ユーザー作成に失敗しました:", error);
         return c.json({ error: "ユーザー作成に失敗しました" }, 500);
+      }
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/api/db-viewer/{tableName}",
+      request: {
+        params: z.object({
+          tableName: TableNameEnum,
+        }),
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                data: z.array(z.any()),
+              }),
+            },
+          },
+          description: "テーブルの全データを取得",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なテーブル名です",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tableName } = c.req.valid("param");
+
+        let data;
+
+        switch (tableName) {
+          case "users":
+            data = await dbClient.select().from(usersTable);
+            break;
+          case "user_keys":
+            data = await dbClient.select().from(userKeysTable);
+            break;
+          case "secrets":
+            data = await dbClient.select().from(secretsTable);
+            break;
+          case "secret_versions":
+            data = await dbClient.select().from(secretVersionsTable);
+            break;
+          case "encrypted_secret_data":
+            data = await dbClient.select().from(encryptedSecretDataTable);
+            break;
+          case "access_permissions":
+            data = await dbClient.select().from(accessPermissionsTable);
+            break;
+          case "operations":
+            data = await dbClient.select().from(operationsTable);
+            break;
+          default:
+            return c.json({ error: "無効なテーブル名です" }, 400);
+        }
+
+        return c.json({ data }, 200);
+      } catch (error) {
+        console.error("データベースビューアーエラー:", error);
+        return c.json(
+          { error: "データベースビューアーエラーが発生しました" },
+          500,
+        );
       }
     },
   );
