@@ -92,17 +92,17 @@ export const initCommand = new Command("init")
       const { encryptedData } = await encryptedDataResponse.json();
 
       // Save to cache
-      if (!secret.latestVersion) {
-        console.error("Invalid secret: latestVersion is missing");
+      if (!secret.version) {
+        console.error("Invalid secret: version is missing");
         process.exit(1);
       }
-      saveToCache(selectedSecret, secret.latestVersion, encryptedData);
+      saveToCache(selectedSecret, secret.version, encryptedData);
 
       // Save the selected secret UID
       const newConfig = {
         ...existingConfig,
         uid: selectedSecret,
-        latestVersion: secret.latestVersion,
+        version: secret.version,
       };
 
       saveVaultConfig(newConfig);

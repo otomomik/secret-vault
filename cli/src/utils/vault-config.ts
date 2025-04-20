@@ -3,7 +3,7 @@ import { join } from "path";
 
 export interface SecretValueConfig {
   uid?: string;
-  latestVersion?: number;
+  version?: number;
   [key: string]: any;
 }
 

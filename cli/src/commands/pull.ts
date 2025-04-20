@@ -41,15 +41,15 @@ export const pullCommand = new Command("pull")
       // If version is specified, use that version
       const targetVersion = options.version
         ? parseInt(options.version, 10)
-        : secret.latestVersion;
+        : secret.version;
 
       if (!targetVersion) {
-        console.error("Invalid secret: latestVersion is missing");
+        console.error("Invalid secret: version is missing");
         process.exit(1);
       }
 
       // Check if we already have the requested version
-      if (vaultConfig.latestVersion === targetVersion && !options.version) {
+      if (vaultConfig.version === targetVersion && !options.version) {
         console.log("Already have the latest version");
         process.exit(0);
       }
@@ -80,7 +80,7 @@ export const pullCommand = new Command("pull")
       if (!options.version) {
         const newConfig = {
           ...vaultConfig,
-          latestVersion: secret.latestVersion,
+          version: secret.version,
         };
         saveVaultConfig(newConfig);
       }

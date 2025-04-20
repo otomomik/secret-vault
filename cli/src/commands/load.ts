@@ -29,7 +29,7 @@ export const loadCommand = new Command("load")
       }
 
       // Determine which version to use
-      let targetVersion = vaultConfig.latestVersion;
+      let targetVersion = vaultConfig.version;
       if (options.version) {
         targetVersion = parseInt(options.version, 10);
       }

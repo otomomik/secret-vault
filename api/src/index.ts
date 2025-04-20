@@ -19,12 +19,12 @@ import { eq, desc, and } from "drizzle-orm";
 const secretSelectSchema = createSelectSchema(secretsTable);
 const secretsSchema = z.array(
   secretSelectSchema.omit({ id: true }).extend({
-    latestVersion: z.number(),
+    version: z.number(),
   }),
 );
 
 const secretDetailSchema = secretSelectSchema.omit({ id: true }).extend({
-  latestVersion: z.number(),
+  version: z.number(),
 });
 
 const secretCreateSchema = z.object({
@@ -144,7 +144,7 @@ const routes = app
             const { id, ...secretWithoutId } = item.secret;
             return {
               ...secretWithoutId,
-              latestVersion: latestVersion?.version || 0,
+              version: latestVersion?.version || 0,
             };
           }),
         );
@@ -272,7 +272,7 @@ const routes = app
         const { id, ...secretWithoutId } = secret;
         const response = {
           ...secretWithoutId,
-          latestVersion: 1,
+          version: 1,
         };
 
         return c.json(response, 201);
@@ -439,7 +439,7 @@ const routes = app
         const { id, ...secretWithoutId } = secret;
         const response = {
           ...secretWithoutId,
-          latestVersion: latestVersion?.version || 0,
+          version: latestVersion?.version || 0,
           currentVersion: secretVersion[0].version,
           metadata: secretVersion[0].metadata,
         };
@@ -640,7 +640,7 @@ const routes = app
         const { id, ...secretWithoutId } = secret;
         const response = {
           ...secretWithoutId,
-          latestVersion: newVersion,
+          version: newVersion,
         };
 
         return c.json(response, 200);

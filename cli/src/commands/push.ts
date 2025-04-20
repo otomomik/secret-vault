@@ -90,13 +90,13 @@ export const pushCommand = new Command("push")
 
       const updatedSecret = await updateResponse.json();
       console.log(
-        `Secret updated successfully to version ${updatedSecret.latestVersion}`,
+        `Secret updated successfully to version ${updatedSecret.version}`,
       );
 
       // Update .secret-vault.json with the new version
       const newVaultConfig = {
         ...vaultConfig,
-        latestVersion: updatedSecret.latestVersion,
+        version: updatedSecret.version,
       };
       saveVaultConfig(newVaultConfig);
 
@@ -109,12 +109,10 @@ export const pushCommand = new Command("push")
       if (currentUserEntry) {
         saveToCache(
           vaultConfig.uid,
-          updatedSecret.latestVersion,
+          updatedSecret.version,
           currentUserEntry.encryptedData,
         );
-        console.log(
-          `Cache updated with version ${updatedSecret.latestVersion}`,
-        );
+        console.log(`Cache updated with version ${updatedSecret.version}`);
       }
     } catch (error) {
       console.error("Error pushing secret:", error);
