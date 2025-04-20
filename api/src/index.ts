@@ -629,6 +629,131 @@ const routes = app
   )
   .openapi(
     createRoute({
+      method: "delete",
+      path: "/api/secrets/{uid}",
+      request: {
+        headers: z.object({
+          "x-user-id": z.string(),
+        }),
+        params: z.object({
+          uid: z.string().uuid("無効なUIDです"),
+        }),
+      },
+      responses: {
+        204: {
+          description: "シークレットが削除されました",
+        },
+        400: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "無効なリクエストです",
+        },
+        401: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "認証エラー",
+        },
+        403: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "アクセス権限がありません",
+        },
+        404: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "シークレットが見つかりません",
+        },
+        500: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                error: z.string(),
+              }),
+            },
+          },
+          description: "エラーが発生しました",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const userId = c.req.header("x-user-id");
+        if (!userId) {
+          return c.json({ error: "認証が必要です" }, 401);
+        }
+
+        const { uid } = c.req.valid("param");
+
+        // ユーザーがアクセス可能なシークレットを取得
+        const [accessibleSecret] = await dbClient
+          .select({
+            secret: secretsTable,
+          })
+          .from(accessPermissionsTable)
+          .innerJoin(
+            secretsTable,
+            eq(accessPermissionsTable.secretId, secretsTable.id),
+          )
+          .where(
+            and(
+              eq(accessPermissionsTable.userId, parseInt(userId)),
+              eq(accessPermissionsTable.status, "approved"),
+              eq(secretsTable.uid, uid),
+            ),
+          )
+          .limit(1);
+
+        if (!accessibleSecret) {
+          return c.json({ error: "シークレットが見つかりません" }, 404);
+        }
+
+        const secret = accessibleSecret.secret;
+
+        // シークレットを削除
+        await dbClient
+          .delete(secretsTable)
+          .where(eq(secretsTable.id, secret.id));
+
+        // 操作履歴を記録
+        await dbClient.insert(operationsTable).values({
+          operationType: "delete_secret",
+          userId: parseInt(userId),
+          secretId: secret.id,
+          details: {
+            secretUid: uid,
+            secretName: secret.name,
+          },
+        });
+
+        return Response.json(null, { status: 204 });
+      } catch (error) {
+        console.error("シークレットの削除に失敗しました:", error);
+        return c.json({ error: "シークレットの削除に失敗しました" }, 500);
+      }
+    },
+  )
+  .openapi(
+    createRoute({
       method: "get",
       path: "/api/secrets/{uid}/encrypted-data",
       request: {

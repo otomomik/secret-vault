@@ -35,18 +35,24 @@ export const loadCommand = new Command("load")
       }
 
       if (!targetVersion) {
-        console.error("No version information available. Please run init or pull first.");
+        console.error(
+          "No version information available. Please run init or pull first.",
+        );
         process.exit(1);
       }
 
       // Try to read from cache first
       let encryptedData = readFromCache(vaultConfig.uid, targetVersion);
-      
+
       // If not in cache, fetch from server
       if (!encryptedData) {
-        console.log(`Version ${targetVersion} not found in cache. Fetching from server...`);
-        
-        const encryptedDataResponse = await client.api.secrets[":uid"]["encrypted-data"].$get({
+        console.log(
+          `Version ${targetVersion} not found in cache. Fetching from server...`,
+        );
+
+        const encryptedDataResponse = await client.api.secrets[":uid"][
+          "encrypted-data"
+        ].$get({
           header: {
             "x-user-id": config.userId,
           },
@@ -65,10 +71,13 @@ export const loadCommand = new Command("load")
       }
 
       // Decrypt the data
-      const decryptedData = decryptWithPrivateKey(encryptedData, config.privateKey);
+      const decryptedData = decryptWithPrivateKey(
+        encryptedData,
+        config.privateKey,
+      );
       console.log(decryptedData);
     } catch (error) {
       console.error("Error loading environment variables:", error);
       process.exit(1);
     }
-  }); 
+  });

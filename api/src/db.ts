@@ -137,17 +137,17 @@ export const operationsTable = pgTable("operations", {
     .references(() => usersTable.id)
     .notNull(),
   userKeyId: integer("user_key_id").references(() => userKeysTable.id, {
-    onDelete: "set null",
+    onDelete: "no action",
   }),
   secretId: integer("secret_id").references(() => secretsTable.id, {
     onDelete: "cascade",
   }),
   secretVersionId: integer("secret_version_id").references(
     () => secretVersionsTable.id,
-    { onDelete: "set null" },
+    { onDelete: "no action" },
   ),
   targetUserId: integer("target_user_id").references(() => usersTable.id, {
-    onDelete: "set null",
+    onDelete: "no action",
   }),
   details: jsonb("details"),
   ipAddress: text("ip_address"),

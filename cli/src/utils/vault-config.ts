@@ -7,7 +7,8 @@ export interface SecretValueConfig {
   [key: string]: any;
 }
 
-export const getVaultConfigPath = () => join(process.cwd(), ".secret-vault.json");
+export const getVaultConfigPath = () =>
+  join(process.cwd(), ".secret-vault.json");
 
 export const loadVaultConfig = (): SecretValueConfig => {
   const configPath = getVaultConfigPath();
@@ -20,4 +21,4 @@ export const loadVaultConfig = (): SecretValueConfig => {
 export const saveVaultConfig = (config: SecretValueConfig) => {
   const configPath = getVaultConfigPath();
   writeFileSync(configPath, JSON.stringify(config, null, 2));
-}; 
+};

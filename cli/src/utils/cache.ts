@@ -27,10 +27,10 @@ export const saveToCache = (
 export const readFromCache = (uid: string, version: number): string | null => {
   const { cacheDir } = getCacheDir(uid, version);
   const dataPath = path.join(cacheDir, "data");
-  
+
   if (!fs.existsSync(dataPath)) {
     return null;
   }
-  
+
   return fs.readFileSync(dataPath, "utf-8");
 };
