@@ -22,7 +22,6 @@ const secretsSchema = z.array(
     latestVersion: z.number(),
   }),
 );
-const userKeySelectSchema = createSelectSchema(userKeysTable);
 
 const secretDetailSchema = secretSelectSchema.omit({ id: true }).extend({
   latestVersion: z.number(),

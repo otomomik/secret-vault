@@ -5,6 +5,7 @@ import { initCommand } from "./commands/init";
 import { pullCommand } from "./commands/pull";
 import { loadCommand } from "./commands/load";
 import { deleteCommand } from "./commands/delete";
+import { pushCommand } from "./commands/push";
 
 const program = new Command();
 
@@ -19,5 +20,6 @@ program.addCommand(initCommand);
 program.addCommand(pullCommand);
 program.addCommand(loadCommand);
 program.addCommand(deleteCommand);
+program.addCommand(pushCommand);
 
 program.parse();
