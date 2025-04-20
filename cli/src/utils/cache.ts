@@ -16,8 +16,8 @@ export const saveToCache = (
   const { cacheRoot, cacheDir } = getCacheDir(uid, version);
 
   // Create directories if they don't exist
-  if (!fs.existsSync(cacheRoot)) {
-    fs.mkdirSync(cacheRoot, { recursive: true });
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
   }
 
   // Save encrypted data

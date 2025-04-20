@@ -4,6 +4,7 @@ import { createCommand } from "./commands/create";
 import { initCommand } from "./commands/init";
 import { pullCommand } from "./commands/pull";
 import { loadCommand } from "./commands/load";
+import { deleteCommand } from "./commands/delete";
 
 const program = new Command();
 
@@ -17,5 +18,6 @@ program.addCommand(createCommand);
 program.addCommand(initCommand);
 program.addCommand(pullCommand);
 program.addCommand(loadCommand);
+program.addCommand(deleteCommand);
 
 program.parse();

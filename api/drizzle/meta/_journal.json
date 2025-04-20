@@ -15,6 +15,13 @@
       "when": 1744978024867,
       "tag": "0001_flaky_ricochet",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1745113903074,
+      "tag": "0002_needy_shiva",
+      "breakpoints": true
     }
   ]
 }

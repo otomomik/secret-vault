@@ -134,7 +134,7 @@ export const operationsTable = pgTable("operations", {
   id: serial("id").primaryKey(),
   operationType: operationTypeEnum("operation_type").notNull(),
   userId: integer("user_id")
-    .references(() => usersTable.id)
+    .references(() => usersTable.id, { onDelete: "no action" })
     .notNull(),
   userKeyId: integer("user_key_id").references(() => userKeysTable.id, {
     onDelete: "no action",

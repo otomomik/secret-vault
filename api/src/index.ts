@@ -734,18 +734,7 @@ const routes = app
           .delete(secretsTable)
           .where(eq(secretsTable.id, secret.id));
 
-        // 操作履歴を記録
-        await dbClient.insert(operationsTable).values({
-          operationType: "delete_secret",
-          userId: parseInt(userId),
-          secretId: secret.id,
-          details: {
-            secretUid: uid,
-            secretName: secret.name,
-          },
-        });
-
-        return Response.json(null, { status: 204 });
+        return new Response(null, { status: 204 });
       } catch (error) {
         console.error("シークレットの削除に失敗しました:", error);
         return c.json({ error: "シークレットの削除に失敗しました" }, 500);
